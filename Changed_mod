@@ -1,0 +1,69 @@
+h from fastapi import FastAPI, Form
+from pydantic import BaseModel, conlist
+import pandas as pd
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.linear_model import LogisticRegression
+import re
+from tokenizer import makeTokens  
+
+# Load phishing URLs dataset
+phish_data = pd.read_csv("datasets/verified_online.csv")
+phish_urls = phish_data.sample(n=5000, random_state=12).copy().reset_index(drop=True)
+
+# Load legitimate URLs dataset
+legit_data = pd.read_csv("datasets/Benign_url_file.csv")
+legit_data.columns = ['URLs']
+
+# Combine phishing and legitimate URLs
+combined_data = pd.concat([phish_urls, legit_data], ignore_index=True)
+combined_data['Label'] = [1] * len(phish_urls) + [0] * len(legit_data)
+combined_data = combined_data.sample(frac=1, random_state=42).reset_index(drop=True)
+
+# Handle missing values by replacing them with an empty string
+combined_data['URLs'].fillna('', inplace=True)
+
+# Split the data into features (X) and labels (y)
+X_train = combined_data['URLs']
+y_train = combined_data['Label']
+
+# Vectorize the URLs
+vectorizer = CountVectorizer(tokenizer=makeTokens, token_pattern=None)
+X_train_transformed = vectorizer.fit_transform(X_train)
+
+# Initialize and train the Logistic Regression model
+logit = LogisticRegression()
+logit.fit(X_train_transformed, y_train)
+
+# Define input data model
+class InputData(BaseModel):
+    urls: conlist(str, min_items=1)
+
+# Define response data model
+class PredictionResponse(BaseModel):
+    url: str
+    prediction: str
+
+# Create FastAPI instance
+app = FastAPI()
+
+# Define prediction endpoint
+@app.post("/predict", response_model=list[PredictionResponse])
+async def predict(input_data: InputData = Form(...)):
+    # Preprocess input URLs
+    urls_processed = [re.sub(r'^((?!www\.)[a-zA-Z0-9-]+\.[a-z]+)$', r'www.\1', url) for url in input_data.urls]
+    X_predict = vectorizer.transform(urls_processed)
+    
+    # Make predictions and get probabilities
+    predictions = logit.predict(X_predict)
+    probabilities = logit.predict_proba(X_predict)
+
+    # Map predictions to labels
+    label_mapping = {0: "bad", 1: "good"}
+    predictions_labels = [label_mapping[pred] for pred in predictions]
+
+    # Create response data
+    response_data = []
+    for url, pred_label, prob in zip(input_data.urls, predictions_labels, probabilities):
+        response_data.append(PredictionResponse(url=url, prediction=pred_label))
+
+    return response_data
