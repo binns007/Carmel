@@ -1,16 +1,20 @@
+import re
+from urllib.parse import urlparse
 
+# Improved Tokenizer
+def makeTokens(url):
+    # Parse the URL
+    url_parsed = urlparse(url)
+    
+    # Tokenize by domain, path, and query
+    domain_tokens = re.split(r'[.-]', url_parsed.netloc)  # Split by dot and dash in domain
+    path_tokens = re.split(r'[/-]', url_parsed.path)  # Split by slash and dash in path
+    query_tokens = re.split(r'[&=]', url_parsed.query)  # Split query params by & and =
 
-def makeTokens(f):
-    tkns_BySlash = str(f.encode('utf-8')).split('/')   # make tokens after splitting by slash
-    total_Tokens = []
-    for i in tkns_BySlash:
-        tokens = str(i).split('-')   # make tokens after splitting by dash
-        tkns_ByDot = []
-        for j in range (0,len(tokens)):
-            temp_Tokens = str(tokens[j]).split('.')    # make tokens after splitting by dot
-            tkns_ByDot = tkns_ByDot + temp_Tokens
-        total_Tokens = total_Tokens + tokens + tkns_ByDot
-    total_Tokens = list(set(total_Tokens))   # remove redundant tokens
-    if 'com' in total_Tokens:
-        total_Tokens.remove('com')   # remove .com
-    return total_Tokens
+    # Combine all tokens
+    all_tokens = domain_tokens + path_tokens + query_tokens
+    
+    # Filter out empty strings
+    all_tokens = [token for token in all_tokens if token]
+    
+    return all_tokens
